@@ -22,9 +22,7 @@ on:
         default: ''
     
     secrets:
-      APPLICATION_ID:
-        required: true
-      APPLICATION_PRIVATE_KEY:
+      PAT:
         required: true
 
     outputs:
@@ -39,18 +37,11 @@ jobs:
     outputs:
       pr-number: ${{ steps.pull_request.outputs.pr-number }}
     steps:
-      - name: Get Github token
-        id: get_github_token
-        uses: peter-murray/workflow-application-token-action@v2.0.0
-        with:
-          application_id: ${{ secrets.APPLICATION_ID }}
-          application_private_key: ${{ secrets.APPLICATION_PRIVATE_KEY }}
-
       - name: Create or update pull request
         id: pull_request
         uses: actions/github-script@v6
         with:
-          github-token: ${{ steps.get_github_token.outputs.token }}
+          github-token: ${{ secrets.PAT }}
           script: |
             const { repo, owner } = context.repo;
             const result = await github.rest.pulls.list({
