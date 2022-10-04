@@ -1,0 +1,99 @@
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: false
+        type: string
+        default: ubuntu-latest
+      source-branch:
+        required: false
+        type: string
+        default: ${{ github.ref_name }}
+      target-branch:
+        required: true
+        type: string
+      title:
+        required: false
+        type: string
+        default: 'PR criado automaticamente'
+      body:
+        required: false
+        type: string
+        default: ''
+    
+    secrets:
+      APPLICATION_ID:
+        required: true
+      APPLICATION_PRIVATE_KEY:
+        required: true
+
+    outputs:
+      pr-number:
+        description: "Número do pull request"
+        value: ${{ jobs.pull-request.outputs.pr-number }}
+
+jobs:
+  pull-request:
+    name: Pull Request
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      pr-number: ${{ steps.pull_request.outputs.pr-number }}
+    steps:
+      - name: Get Github token
+        id: get_github_token
+        uses: peter-murray/workflow-application-token-action@v1
+        with:
+          application_id: ${{ secrets.APPLICATION_ID }}
+          application_private_key: ${{ secrets.APPLICATION_PRIVATE_KEY }}
+
+      - name: Create or update pull request
+        id: pull_request
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ steps.get_github_token.outputs.token }}
+          script: |
+            const { repo, owner } = context.repo;
+            const result = await github.rest.pulls.list({
+              owner,
+              repo,
+              head: `${owner}:${{ inputs.source-branch }}`,
+              base: "${{ inputs.target-branch }}",
+              state: "open"
+            });
+            const pullRequest = result.data[0];
+            if (pullRequest) {
+              console.log(`The pull request ${pullRequest.number} already exists.`);
+              core.setOutput("pr-number", pullRequest.number);
+              if ("${{ inputs.title }}".length > 0 && "${{ inputs.body }}".length > 0) {
+                const updateResult = await github.rest.pulls.update({
+                  owner,
+                  repo,
+                  pull_number: pullRequest.number,
+                  title: `${{ inputs.title }} ${{ inputs.target-branch }} <- ${{ inputs.source-branch }}`,
+                  body: "${{ inputs.body }}"
+                });
+                if (updateResult) {
+                  console.log(`Pull request ${updateResult.data.number} updated successfully.`);
+                } else {
+                  core.setFailed(`Error on updating pull request ${pullRequest.number}.`);
+                }
+              }
+              console.log(pullRequest.html_url);
+            }
+            else {
+              const result = await github.rest.pulls.create({
+                owner,
+                repo,
+                head: `${owner}:${{ inputs.source-branch }}`,
+                base: "${{ inputs.target-branch }}",
+                title: `${{ inputs.title }} ${{ inputs.target-branch }} <- ${{ inputs.source-branch }}`,
+                body: "${{ inputs.body }}"
+              });
+              if (result) {
+                console.log(`Pull request ${result.data.number} created successfully.`);
+                console.log(result.data.html_url);
+                core.setOutput('pr-number', result.data.number);
+              } else {
+                core.setFailed(`Falha na criação do pull request.`);
+              }
+            }
